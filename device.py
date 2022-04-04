@@ -159,6 +159,14 @@ class HarpDevice():
                     txMessage.calc_set_checksum()
                     self.txMessages.append(txMessage)
 
-                await uasyncio.sleep(0)
-            except (TypeError, IndexError) as e:
-                print(e)
+            except (TypeError, IndexError, KeyError):
+                # Prepare error response.
+                length = HarpMessage.offset(HarpTypes.HAS_TIMESTAMP) - 1
+                txMessage = HarpTxMessage(rxMessage.messageType | HarpMessage.ERROR,
+                                          length, rxMessage.address, rxMessage.payloadType, self.sync.read())
+
+                # Format and post error response to transmit queue.
+                txMessage.calc_set_checksum()
+                self.txMessages.append(txMessage)
+
+            await uasyncio.sleep(0)
