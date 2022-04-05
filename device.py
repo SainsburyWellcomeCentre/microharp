@@ -7,6 +7,7 @@ from microharp.types import HarpTypes
 from microharp.message import HarpMessage, HarpRxMessage, HarpTxMessage
 from microharp.register import (ReadOnlyReg, ReadWriteReg,
                                 TimestampSecondReg, TimestampMicroReg, OperationalCtrlReg)
+from microharp.event import PeriodicEvent
 
 
 class HarpDevice():
@@ -55,10 +56,13 @@ class HarpDevice():
             HarpDevice.R_FW_VERSION_L: ReadOnlyReg(HarpTypes.U8, (1,)),
             HarpDevice.R_TIMESTAMP_SECOND: TimestampSecondReg(sync),
             HarpDevice.R_TIMESTAMP_MICRO: TimestampMicroReg(sync),
-            HarpDevice.R_OPERATION_CTRL: OperationalCtrlReg(HarpTypes.U8, (0xe0,)),
+            HarpDevice.R_OPERATION_CTRL: OperationalCtrlReg(HarpTypes.U8, (0x60,)),
             HarpDevice.R_DEVICE_NAME: ReadWriteReg(HarpTypes.U8, tuple(b'SWC-IRFL Harp Device')),
             HarpDevice.R_SERIAL_NUMBER: ReadWriteReg(HarpTypes.U16)
         }
+
+        self.aliveEvent = PeriodicEvent(
+            HarpDevice.R_TIMESTAMP_SECOND, HarpTypes.U32, self.rxMessages, 1000)
 
     async def _read_co(self, buf, nbytes=1):
         """Private member co-routine.
@@ -102,8 +106,6 @@ class HarpDevice():
         while True:
             if self.registers[HarpDevice.R_OPERATION_CTRL].OPLEDEN:
                 self.led.toggle()
-            else:
-                self.led.off()
             interval = HarpDevice.ledIntervals[self.registers[HarpDevice.R_OPERATION_CTRL].OP_MODE]
             await uasyncio.sleep(interval)
 
@@ -117,17 +119,17 @@ class HarpDevice():
         uasyncio.create_task(self._blink_task())
 
         while True:
+            # Process message queue.
             if len(self.rxMessages) > 0:
                 try:
-                    # Fetch next message from receive queue.
+                    # Fetch next message.
                     rxMessage = self.rxMessages.popleft()
                     if self.trace:
                         print('RX message: ' + rxMessage.to_string())
 
                     # Perform write operation.
                     if rxMessage.messageType == HarpMessage.WRITE:
-                        self.registers[rxMessage.address].write(
-                            rxMessage.payloadType, rxMessage.payload)
+                        self.registers[rxMessage.address].write(rxMessage.payloadType, rxMessage.payload)
 
                     # Prepare response.
                     length = len(self.registers[rxMessage.address]) * HarpTypes.size(
@@ -152,5 +154,13 @@ class HarpDevice():
                 self.stream.write(txMessage.buffer)
                 if self.trace:
                     print('TX message: ' + txMessage.to_string())
+
+            # Update device state.
+            if not self.registers[HarpDevice.R_OPERATION_CTRL].OPLEDEN:
+                self.led.off()
+            if self.registers[HarpDevice.R_OPERATION_CTRL].ALIVE_EN and not self.aliveEvent.enabled:
+                self.aliveEvent.enabled = True
+            elif not self.registers[HarpDevice.R_OPERATION_CTRL].ALIVE_EN and self.aliveEvent.enabled:
+                self.aliveEvent.enabled = False
 
             await uasyncio.sleep(0)
