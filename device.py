@@ -33,7 +33,7 @@ class HarpDevice():
 
     ledIntervals = (2.0, 1.0, 0.05, 0.5)
 
-    def __init__(self, stream, sync, led, rxqlen=16, txqlen=16, trace=False):
+    def __init__(self, stream, sync, led, qlen=32, trace=False):
         """Constructor.
 
         Connects the logical device to its physical interfaces and creates the register map.
@@ -45,8 +45,7 @@ class HarpDevice():
         self.led = led
         self.trace = trace
 
-        self.rxMessages = deque((), rxqlen, 1)
-        self.txMessages = deque((), txqlen, 1)
+        self.rxMessages = deque((), qlen, 1)
 
         self.registers = {
             HarpDevice.R_WHO_AM_I: ReadOnlyReg(HarpTypes.U16, (26354,)),
@@ -73,12 +72,12 @@ class HarpDevice():
                 nbytes = nbytes - n
             await uasyncio.sleep(0)
 
-    async def _stream_rx_task(self):
+    async def _stream_task(self):
         """Private member co-operative task.
 
         Reads and validates complete messages from stream and posts them to the rxMessages queue.
         """
-        print('HarpDevice._stream_rx_task()')
+        print('HarpDevice._stream_task()')
         while True:
             try:
                 rxMessage = HarpRxMessage()
@@ -93,20 +92,6 @@ class HarpDevice():
                 self.rxMessages.append(rxMessage)
             except (ValueError, IndexError) as e:
                 print(e)
-
-    async def _stream_tx_task(self):
-        """Private member co-operative task.
-
-        Polls for messages in the txMessages queue and writes them to stream when available.
-        """
-        print('HarpDevice._stream_tx_task()')
-        while True:
-            if len(self.txMessages) > 0:
-                txMessage = self.txMessages.popleft()
-                if self.trace:
-                    print('TX message: ' + txMessage.to_string())
-                self.stream.write(txMessage.buffer)
-            await uasyncio.sleep(0)
 
     async def _blink_task(self):
         """Private member co-operative task.
@@ -128,8 +113,7 @@ class HarpDevice():
         Creates and launches the device co-operative tasks and executes the main application loop.
         """
         print('HarpDevice.main()')
-        uasyncio.create_task(self._stream_rx_task())
-        uasyncio.create_task(self._stream_tx_task())
+        uasyncio.create_task(self._stream_task())
         uasyncio.create_task(self._blink_task())
 
         while True:
@@ -163,8 +147,10 @@ class HarpDevice():
                     if rxMessage.messageType == HarpMessage.WRITE:
                         txMessage.payload = rxMessage.payload
 
-                # Format and post response to transmit queue.
+                # Format and send response.
                 txMessage.calc_set_checksum()
-                self.txMessages.append(txMessage)
+                self.stream.write(txMessage.buffer)
+                if self.trace:
+                    print('TX message: ' + txMessage.to_string())
 
             await uasyncio.sleep(0)
