@@ -107,6 +107,10 @@ class HarpMessage():
     def offset(payloadType):
         return 5 if payloadType & HarpTypes.HAS_TIMESTAMP == 0 else 11
 
+    @staticmethod
+    def resize(payloadType):
+        return 0 if payloadType & HarpTypes.HAS_TIMESTAMP != 0 else 6
+
 
 class HarpRxMessage(HarpMessage):
     """Receive message buffer and helper functions.

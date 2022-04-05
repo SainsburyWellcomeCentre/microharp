@@ -133,8 +133,8 @@ class HarpDevice():
         uasyncio.create_task(self._blink_task())
 
         while True:
-            try:
-                if len(self.rxMessages) > 0:
+            if len(self.rxMessages) > 0:
+                try:
                     # Fetch next message from receive queue.
                     rxMessage = self.rxMessages.popleft()
                     if self.trace:
@@ -155,17 +155,15 @@ class HarpDevice():
                     txMessage.payload = self.registers[rxMessage.address].read(
                         rxMessage.payloadType)
 
-                    # Format and post response to transmit queue.
-                    txMessage.calc_set_checksum()
-                    self.txMessages.append(txMessage)
+                except (TypeError, IndexError, KeyError):
+                    # Prepare error response.
+                    length = rxMessage.length + HarpMessage.resize(rxMessage.payloadType)
+                    txMessage = HarpTxMessage(rxMessage.messageType | HarpMessage.ERROR,
+                                              length, rxMessage.address, rxMessage.payloadType, self.sync.read())
+                    if rxMessage.messageType == HarpMessage.WRITE:
+                        txMessage.payload = rxMessage.payload
 
-            except (TypeError, IndexError, KeyError):
-                # Prepare error response.
-                length = HarpMessage.offset(HarpTypes.HAS_TIMESTAMP) - 1
-                txMessage = HarpTxMessage(rxMessage.messageType | HarpMessage.ERROR,
-                                          length, rxMessage.address, rxMessage.payloadType, self.sync.read())
-
-                # Format and post error response to transmit queue.
+                # Format and post response to transmit queue.
                 txMessage.calc_set_checksum()
                 self.txMessages.append(txMessage)
 
