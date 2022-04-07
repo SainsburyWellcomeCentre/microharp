@@ -1,4 +1,4 @@
-# Compile source files to byte code.
+# Compile source files to bytecode.
 
 MPY_DIR ?= ../micropython
 MPY_CROSS = $(MPY_DIR)/mpy-cross/mpy-cross

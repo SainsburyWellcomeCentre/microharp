@@ -8,7 +8,8 @@ from microharp.message import HarpMessage, HarpTxMessage
 class HarpEvent():
     """Abstract base class, creates the event trigger message and provides message queue binding.
 
-    All event classes must sublcass this class, and overload the enable and disable methods.
+    All event classes must sublcass this class, call __init__, and implement an enabled property.
+    It is not recommended, nor should it be necessary, to overload _callback().
     """
 
     def __init__(self, address, typ, queue):
