@@ -124,3 +124,22 @@ class TimestampMicroReg(HarpRegister):
 
     def write(self, typ, value):
         raise TypeError('TimestampMicroReg.write().')
+
+
+class PinRegister(HarpRegister):
+    """Pin register, maps a GPIO pin to a harp register."""
+
+    def __init__(self, pin):
+        super().__init__(HarpTypes.U8)
+        self.pin = pin
+
+    def __len__(self):
+        return 1
+
+    def read(self, typ):
+        super().read(typ)
+        return (self.pin.value(),)
+
+    def write(self, typ, value):
+        super().write(typ, value)
+        self.pin.write(value[0])

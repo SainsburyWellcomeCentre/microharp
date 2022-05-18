@@ -8,7 +8,7 @@ from microharp.message import HarpMessage, HarpTxMessage
 class HarpEvent():
     """Abstract base class, creates the event trigger message and provides message queue binding.
 
-    All event classes must sublcass this class, call __init__, and implement an enabled property.
+    All event classes must sublcass this class and call __init__.
     It is not recommended, nor should it be necessary, to overload _callback().
     """
 
@@ -46,3 +46,15 @@ class PeriodicEvent(HarpEvent):
                             period=self.period, callback=self._callback)
         else:
             self.timer.deinit()
+
+
+class PinEvent(HarpEvent):
+    """Pin event.
+
+    Triggers a read of register at address, generating a status message, on a pin event.
+    """
+
+    def __init__(self, address, typ, queue, pin, trigger):
+        super().__init__(address, typ, queue)
+        self.pin = pin
+        self.pin.irq(handler=self._callback, trigger=trigger)
