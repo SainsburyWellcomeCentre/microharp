@@ -142,4 +142,4 @@ class PinRegister(HarpRegister):
 
     def write(self, typ, value):
         super().write(typ, value)
-        self.pin.write(value[0])
+        self.pin.value(value[0])
