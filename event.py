@@ -59,12 +59,13 @@ class PeriodicEvent(HarpEvent):
 
     @enabled.setter
     def enabled(self, value):
-        self._enabled = value
-        if self._enabled:
-            self.timer.init(mode=Timer.PERIODIC,
-                            period=self.period, callback=self._callback)
-        else:
-            self.timer.deinit()
+        if self._enabled != value:
+            self._enabled = value
+            if self._enabled:
+                self.timer.init(mode=Timer.PERIODIC,
+                                period=self.period, callback=self._callback)
+            else:
+                self.timer.deinit()
 
 
 class RecurringEvent(PeriodicEvent):

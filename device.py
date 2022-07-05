@@ -14,8 +14,8 @@ class HarpDevice():
     """Harp device implementing the common registers and functionality.
 
     All Harp device classes should subclass this class, overload __init__ and call it from their
-    implementation. It is not recommended, nor should it be necessary, to overload other member
-    functions of this class.
+    implementation. Devices may overload _ctrl_hook(), but must call the base function. It is
+    not recommended, nor should it be necessary, to overload other member functions of this class.
     """
     R_WHO_AM_I = const(0)
     R_HW_VERSION_H = const(1)
@@ -57,14 +57,27 @@ class HarpDevice():
             HarpDevice.R_FW_VERSION_L: ReadOnlyReg(HarpTypes.U8, (1,)),
             HarpDevice.R_TIMESTAMP_SECOND: TimestampSecondReg(sync),
             HarpDevice.R_TIMESTAMP_MICRO: TimestampMicroReg(sync),
-            HarpDevice.R_OPERATION_CTRL: OperationalCtrlReg(HarpTypes.U8, (0x60,)),
-            HarpDevice.R_DEVICE_NAME: ReadWriteReg(HarpTypes.U8, tuple(b'SWC-IRFL Harp Device')),
+            HarpDevice.R_OPERATION_CTRL: OperationalCtrlReg(self._ctrl_hook),
+            HarpDevice.R_DEVICE_NAME: ReadWriteReg(HarpTypes.U8, tuple(b'Microharp Device')),
             HarpDevice.R_SERIAL_NUMBER: ReadWriteReg(HarpTypes.U16)
         }
 
         self.aliveEvent = PeriodicEvent(
             HarpDevice.R_TIMESTAMP_SECOND, self.registers[HarpDevice.R_TIMESTAMP_SECOND],
             self.sync, self.txMessages, 1000)
+
+    def _ctrl_hook(self):
+        """Private member function.
+
+        Control register write hook, updates device state.
+        """
+        if not self.registers[HarpDevice.R_OPERATION_CTRL].OPLEDEN:
+            self.led.off()
+
+        if self.registers[HarpDevice.R_OPERATION_CTRL].OP_MODE != OperationalCtrlReg.STANDBY_MODE:
+            self.aliveEvent.enabled = self.registers[HarpDevice.R_OPERATION_CTRL].ALIVE_EN
+        else:
+            self.aliveEvent.enabled = False
 
     async def _read_co(self, buf, nbytes=1):
         """Private member co-routine.
@@ -78,12 +91,12 @@ class HarpDevice():
                 nbytes = nbytes - n
             await uasyncio.sleep(0)
 
-    async def _stream_rx_task(self):
+    async def _stream_task(self):
         """Private member co-operative task.
 
         Reads and validates complete messages from stream and posts them to the rxMessages queue.
         """
-        print('HarpDevice._stream_rx_task()')
+        print('HarpDevice._stream_task()')
         while True:
             try:
                 rxMessage = HarpRxMessage()
@@ -98,19 +111,6 @@ class HarpDevice():
                 self.rxMessages.append(rxMessage)
             except (ValueError, IndexError) as e:
                 print(e)
-
-    async def _stream_tx_task(self):
-        """Private member co-operative task.
-        Polls for messages in the txMessages queue and writes them to stream when available.
-        """
-        print('HarpDevice._stream_tx_task()')
-        while True:
-            if len(self.txMessages) > 0:
-                txMessage = self.txMessages.popleft()
-                if self.trace:
-                    print('TX message: ' + txMessage.to_string())
-                self.stream.write(txMessage.buffer)
-            await uasyncio.sleep(0)
 
     async def _blink_task(self):
         """Private member co-operative task.
@@ -130,12 +130,11 @@ class HarpDevice():
         Creates and launches the device co-operative tasks and executes the main application loop.
         """
         print('HarpDevice.main()')
-        uasyncio.create_task(self._stream_rx_task())
-        uasyncio.create_task(self._stream_tx_task())
+        uasyncio.create_task(self._stream_task())
         uasyncio.create_task(self._blink_task())
 
         while True:
-            # Process message queue.
+            # Process rx message queue.
             if len(self.rxMessages) > 0:
                 try:
                     # Fetch next message.
@@ -169,12 +168,11 @@ class HarpDevice():
                 txMessage.calc_set_checksum()
                 self.txMessages.append(txMessage)
 
-            # Update device state.
-            if not self.registers[HarpDevice.R_OPERATION_CTRL].OPLEDEN:
-                self.led.off()
-            if self.registers[HarpDevice.R_OPERATION_CTRL].ALIVE_EN and not self.aliveEvent.enabled:
-                self.aliveEvent.enabled = True
-            elif not self.registers[HarpDevice.R_OPERATION_CTRL].ALIVE_EN and self.aliveEvent.enabled:
-                self.aliveEvent.enabled = False
+            # Process tx message queue.
+            if len(self.txMessages) > 0:
+                txMessage = self.txMessages.popleft()
+                if self.trace:
+                    print('TX message: ' + txMessage.to_string())
+                self.stream.write(txMessage.buffer)
 
             await uasyncio.sleep(0)

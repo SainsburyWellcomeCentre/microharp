@@ -88,6 +88,14 @@ class OperationalCtrlReg(ReadWriteReg):
     def ALIVE_EN(self):
         return bool(self.value[0] & 0x80)
 
+    def __init__(self, wr_hook):
+        super().__init__(HarpTypes.U8, (0xe0,))
+        self.wr_hook = wr_hook
+
+    def write(self, typ, value):
+        super().write(typ, value)
+        self.wr_hook()
+
 
 class TimestampSecondReg(HarpRegister):
     """Timestamp seconds register, delegates read and write operations to harpsync."""
