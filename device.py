@@ -66,6 +66,11 @@ class HarpDevice():
             HarpDevice.R_TIMESTAMP_SECOND, self.registers[HarpDevice.R_TIMESTAMP_SECOND],
             self.sync, self.txMessages, 1000)
 
+        self.tasks = [
+            self._stream_task(),
+            self._blink_task()
+        ]
+
     def _ctrl_hook(self):
         """Private member function.
 
@@ -88,7 +93,7 @@ class HarpDevice():
             n = min(nbytes, self.stream.any())
             if n > 0:
                 buf.extend(self.stream.read(n))
-                nbytes = nbytes - n
+                nbytes -= n
             await uasyncio.sleep(0)
 
     async def _stream_task(self):
@@ -130,8 +135,8 @@ class HarpDevice():
         Creates and launches the device co-operative tasks and executes the main application loop.
         """
         print('HarpDevice.main()')
-        uasyncio.create_task(self._stream_task())
-        uasyncio.create_task(self._blink_task())
+        for task in self.tasks:
+            uasyncio.create_task(task)
 
         while True:
             # Process rx message queue.
