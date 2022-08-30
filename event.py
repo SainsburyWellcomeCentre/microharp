@@ -21,13 +21,10 @@ class HarpEvent():
 
     def _callback(self, ins):
         if self.enabled:
-            self.post(self.register.read(self.register.typ))
-
-    def post(self, payload):
-        self.message.timestamp = self.sync.read()
-        self.message.payload = payload
-        self.message.calc_set_checksum()
-        self.queue.append(self.message)
+            self.message.timestamp = self.sync.read()
+            self.message.payload = self.register.read(self.register.typ)
+            self.message.calc_set_checksum()
+            self.queue.append(self.message)
 
 
 class PinEvent(HarpEvent):
@@ -53,22 +50,21 @@ class PeriodicEvent(HarpEvent):
         self.timer = Timer(mode=Timer.PERIODIC, period=period, callback=self._callback)
 
 
-class RecurringEvent():
-    """Recurring event.
+class LooseEvent():
+    """Loose event.
 
-    Triggers a read of register at address, generating a status message, every period milliseconds.
+    Triggers a read of register at address, generating a status message, when callback is called.
 
-    The register read operation associated with a RecurringEvent occurs in foreground context,
-    allowing for lengthy computation at the expense of trigger latency.
+    The register read operation associated with a LooseEvent occurs in foreground context,
+    allowing for lengthy computation or I/O operations at the expense of trigger latency.
     """
-    def __init__(self, address, register, queue, period):
+    def __init__(self, address, typ, queue):
         self.message = HarpTxMessage(HarpMessage.EVENT,
-            HarpMessage.offset(~HarpTypes.HAS_TIMESTAMP) - 1, address, register.typ)
+            HarpMessage.offset(~HarpTypes.HAS_TIMESTAMP) - 1, address, typ)
         self.message.calc_set_checksum()
         self.queue = queue
         self.enabled = False
-        self.timer = Timer(mode=Timer.PERIODIC, period=period, callback=self._callback)
 
-    def _callback(self, ins):
+    def callback(self, ins):
         if self.enabled:
             self.queue.append(self.message)

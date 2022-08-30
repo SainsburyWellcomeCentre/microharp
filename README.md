@@ -8,7 +8,7 @@ To get started using microharp create a python file containing the code below an
 	import uasyncio
 	from machine import Pin
 
-	# Import SWC-IRFL library modules.
+	# Import SWC library modules.
 	import usbcdc
 	import harpsync
 	from microharp.device import HarpDevice
@@ -31,7 +31,7 @@ Launch Bonsai, create a Harp device and select the correct COM port (this will b
 	Hw: 1.0
 	Fw: 0.1
 	Timestamp (s): 7753
-	DeviceName: SWC-IRFL Harp Device
+	DeviceName: SWC Harp Device
 
 The Harp device name displayed in the Bonsai GUI will also update once clicked. Running and stopping the Bonsai workflow will put the device into active and standby modes respectively, which will be reflected by the blink rate of the LED.
 
