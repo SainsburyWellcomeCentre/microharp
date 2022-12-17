@@ -26,6 +26,11 @@ class HarpEvent():
             self.message.calc_set_checksum()
             self.queue.append(self.message)
 
+    def enable(self):
+        self.enabled = True
+
+    def disable(self):
+        self.enabled = False
 
 class PinEvent(HarpEvent):
     """Pin event.
