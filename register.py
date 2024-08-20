@@ -1,10 +1,11 @@
 """Harp base and common register classes."""
+
 from micropython import const
 
 from microharp.types import HarpTypes
 
 
-class HarpRegister():
+class HarpRegister:
     """Abstract base class, provides runtime type checking.
 
     All Harp register classes must sublcass this class, overload its methods and call its
@@ -22,11 +23,11 @@ class HarpRegister():
 
     def read(self, typ):
         if typ != self.typ:
-            raise TypeError('HarpRegister.read() type mismatch.')
+            raise TypeError("HarpRegister.read() type mismatch.")
 
     def write(self, typ, value):
         if typ != self.typ:
-            raise TypeError('HarpRegister.write() type mismatch.')
+            raise TypeError("HarpRegister.write() type mismatch.")
 
 
 class ReadWriteReg(HarpRegister):
@@ -55,11 +56,12 @@ class ReadOnlyReg(ReadWriteReg):
     """
 
     def write(self, typ, value):
-        raise TypeError('ReadOnlyReg.write().')
+        raise TypeError("ReadOnlyReg.write().")
 
 
 class OperationalCtrlReg(ReadWriteReg):
     """Harp operational control register, provides bit-field definitions and getters."""
+
     STANDBY_MODE = const(0)
     ACTIVE_MODE = const(1)
     SPEED_MODE = const(3)
@@ -89,7 +91,7 @@ class OperationalCtrlReg(ReadWriteReg):
         return bool(self.value[0] & 0x80)
 
     def __init__(self, wr_hook):
-        super().__init__(HarpTypes.U8, (0xe0,))
+        super().__init__(HarpTypes.U8, (0xE0,))
         self.wr_hook = wr_hook
 
     def write(self, typ, value):
@@ -131,7 +133,7 @@ class TimestampMicroReg(HarpRegister):
         return (self.sync.read()[1],)
 
     def write(self, typ, value):
-        raise TypeError('TimestampMicroReg.write().')
+        raise TypeError("TimestampMicroReg.write().")
 
 
 class PinRegister(HarpRegister):

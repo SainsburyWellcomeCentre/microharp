@@ -1,9 +1,11 @@
 """Harp datatype class."""
+
 from micropython import const
 
 
-class HarpTypes():
+class HarpTypes:
     """Harp datatype encodings and helper functions."""
+
     _SINT = const(0x80)
     U8 = const(1)
     S8 = const(U8 | _SINT)
@@ -19,4 +21,4 @@ class HarpTypes():
     @staticmethod
     def size(typ):
         """Return the size, in bytes, of a Harp datatype."""
-        return typ & 0x0f
+        return typ & 0x0F

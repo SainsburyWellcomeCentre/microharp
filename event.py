@@ -1,19 +1,26 @@
 """Harp protocol event class."""
+
 from machine import Timer
 
 from microharp.types import HarpTypes
 from microharp.message import HarpMessage, HarpTxMessage
 
 
-class HarpEvent():
+class HarpEvent:
     """Base class, creates the event message and provides message queue binding.
 
     Event classes should sublcass this class and call __init__.
     """
+
     def __init__(self, address, register, sync, queue):
-        length = len(register) * HarpTypes.size(register.typ) + \
-            HarpMessage.offset(HarpTypes.HAS_TIMESTAMP) - 1
-        self.message = HarpTxMessage(HarpMessage.EVENT, length, address, register.typ, (0, 0))
+        length = (
+            len(register) * HarpTypes.size(register.typ)
+            + HarpMessage.offset(HarpTypes.HAS_TIMESTAMP)
+            - 1
+        )
+        self.message = HarpTxMessage(
+            HarpMessage.EVENT, length, address, register.typ, (0, 0)
+        )
         self.register = register
         self.sync = sync
         self.queue = queue
@@ -32,6 +39,7 @@ class PinEvent(HarpEvent):
 
     Triggers a read of register at address, generating an event message, on a pin event.
     """
+
     def __init__(self, address, register, sync, queue, trigger):
         super().__init__(address, register, sync, queue)
         register.pin.irq(handler=self._callback, trigger=trigger)
@@ -45,12 +53,13 @@ class PeriodicEvent(HarpEvent):
     The register read operation associated with a PeriodicEvent occurs in interrupt context, in
     order to minimise trigger latency, lengthy computation should therefore be avoided.
     """
+
     def __init__(self, address, register, sync, queue, period):
         super().__init__(address, register, sync, queue)
         self.timer = Timer(mode=Timer.PERIODIC, period=period, callback=self._callback)
 
 
-class LooseEvent():
+class LooseEvent:
     """Loose event.
 
     Triggers a read of register at address, generating a status message, when callback is called.
@@ -58,9 +67,14 @@ class LooseEvent():
     The register read operation associated with a LooseEvent occurs in foreground context,
     allowing for lengthy computation or I/O operations at the expense of trigger latency.
     """
+
     def __init__(self, address, typ, queue):
-        self.message = HarpTxMessage(HarpMessage.EVENT,
-            HarpMessage.offset(~HarpTypes.HAS_TIMESTAMP) - 1, address, typ)
+        self.message = HarpTxMessage(
+            HarpMessage.EVENT,
+            HarpMessage.offset(~HarpTypes.HAS_TIMESTAMP) - 1,
+            address,
+            typ,
+        )
         self.message.calc_set_checksum()
         self.queue = queue
         self.enabled = False

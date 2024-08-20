@@ -1,4 +1,5 @@
 """Harp protocol message classes."""
+
 from struct import pack_into, unpack_from
 from binascii import hexlify
 from micropython import const
@@ -6,8 +7,9 @@ from micropython import const
 from microharp.types import HarpTypes
 
 
-class HarpMessage():
+class HarpMessage:
     """Abstract base class, defines Harp message semantics and translates to/from native types."""
+
     READ = const(1)
     WRITE = const(2)
     EVENT = const(3)
@@ -17,16 +19,19 @@ class HarpMessage():
     LENGTH_BYTE = const(2)
 
     formats = {
-        HarpTypes.U8: 'B',
-        HarpTypes.S8: 'b',
-        HarpTypes.U16: 'H',
-        HarpTypes.S16: 'h',
-        HarpTypes.U32: 'I',
-        HarpTypes.S32: 'i',
-        HarpTypes.U64: 'Q',
-        HarpTypes.S64: 'q',
-        HarpTypes.FLOAT: 'f'
+        HarpTypes.U8: "B",
+        HarpTypes.S8: "b",
+        HarpTypes.U16: "H",
+        HarpTypes.S16: "h",
+        HarpTypes.U32: "I",
+        HarpTypes.S32: "i",
+        HarpTypes.U64: "Q",
+        HarpTypes.S64: "q",
+        HarpTypes.FLOAT: "f",
     }
+
+    def __init__(self, array):
+        self.buffer = array
 
     @property
     def format(self):
@@ -74,23 +79,23 @@ class HarpMessage():
 
     @property
     def timestamp(self):
-        return unpack_from('IH', self.buffer, 5)
+        return unpack_from("IH", self.buffer, 5)
 
     @timestamp.setter
     def timestamp(self, value):
-        pack_into('IH', self.buffer, 5, *value)
+        pack_into("IH", self.buffer, 5, *value)
 
     @property
     def payload(self):
         ofs = HarpMessage.offset(self.payloadType)
         nof = (self.length - ofs + 1) // HarpTypes.size(self.payloadType)
-        return unpack_from(f'{nof}{self.format}', self.buffer, ofs)
+        return unpack_from(f"{nof}{self.format}", self.buffer, ofs)
 
     @payload.setter
     def payload(self, value):
         ofs = HarpMessage.offset(self.payloadType)
         nof = len(value)
-        pack_into(f'{nof}{self.format}', self.buffer, ofs, *value)
+        pack_into(f"{nof}{self.format}", self.buffer, ofs, *value)
 
     @property
     def checksum(self):
@@ -101,7 +106,10 @@ class HarpMessage():
         self.buffer[-1] = value
 
     def to_string(self):
-        return str(hexlify(self.buffer, '-'))
+        return str(hexlify(self.buffer, "-"))
+
+    def to_ascii(self):
+        return str(hexlify(self.buffer), "ascii")
 
     @staticmethod
     def offset(payloadType):
@@ -119,13 +127,14 @@ class HarpRxMessage(HarpMessage):
     """
 
     def __init__(self):
-        self.buffer = bytearray()
+        array = bytearray()
+        super().__init__(array)
 
     def has_valid_message_type(self):
         return self.messageType in HarpMessage.messageTypes
 
     def has_valid_checksum(self):
-        return self.checksum == sum(self.buffer[:-1]) & 0xff
+        return self.checksum == sum(self.buffer[:-1]) & 0xFF
 
 
 class HarpTxMessage(HarpMessage):
@@ -135,11 +144,12 @@ class HarpTxMessage(HarpMessage):
     """
 
     def __init__(self, messageType, length, address, payloadType, timestamp=None):
-        self.buffer = bytearray(length + HarpMessage.LENGTH_BYTE)
+        array = bytearray(length + HarpMessage.LENGTH_BYTE)
+        super().__init__(array)
         self.messageType = messageType
         self.length = length
         self.address = address
-        self.port = 0xff
+        self.port = 0xFF
         if timestamp is None:
             self.payloadType = payloadType & ~HarpTypes.HAS_TIMESTAMP
         else:
@@ -147,4 +157,4 @@ class HarpTxMessage(HarpMessage):
             self.timestamp = timestamp
 
     def calc_set_checksum(self):
-        self.checksum = sum(self.buffer[:-1]) & 0xff
+        self.checksum = sum(self.buffer[:-1]) & 0xFF
