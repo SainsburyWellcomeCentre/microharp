@@ -4,17 +4,17 @@ import uasyncio
 from collections import deque
 from micropython import const
 
-from payloadtype import HarpTypes
-from message import HarpMessage, HarpRxMessage, HarpTxMessage
-from register import (
+from .type import HarpTypes
+from .message import HarpMessage, HarpRxMessage, HarpTxMessage
+from .register import (
     ReadOnlyReg,
     ReadWriteReg,
     TimestampSecondReg,
     TimestampMicroReg,
     OperationalCtrlReg,
 )
-from event import PeriodicEvent
-from clock import HarpClock
+from .event import PeriodicEvent
+from .clock import HarpClock
 import sys
 import uselect
 from machine import Pin, UART
@@ -46,7 +46,7 @@ class HarpDevice:
 
     ledIntervals = (2.0, 1.0, 0.05, 0.5)
 
-    def __init__(self, led, clocksync_pin, rxqlen=16, txqlen=16, monitor=None):
+    def __init__(self, led, clocksync_pin=None, rxqlen=16, txqlen=16, monitor=None):
         """Constructor.
 
         Connects the logical device to its physical interfaces and creates the register map.
@@ -64,7 +64,7 @@ class HarpDevice:
         self.rxMessages = deque((), rxqlen)
         self.txMessages = deque((), txqlen)
 
-        self.clockSync = UART(0, baudrate=self.CLK_BUAD, rx=Pin(clocksync_pin), rxbuf=6)
+        # self.clockSync = UART(0, baudrate=self.CLK_BUAD, rx=Pin(clocksync_pin), rxbuf=6)
 
         self.registers = {
             HarpDevice.R_WHO_AM_I: ReadOnlyReg(HarpTypes.U16, (0,)),
