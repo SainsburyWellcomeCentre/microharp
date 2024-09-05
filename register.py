@@ -1,8 +1,7 @@
 """Harp base and common register classes."""
 
 from micropython import const
-
-from microharp.types import HarpTypes
+from payloadtype import HarpTypes
 
 
 class HarpRegister:

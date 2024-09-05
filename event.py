@@ -2,8 +2,8 @@
 
 from machine import Timer
 
-from microharp.types import HarpTypes
-from microharp.message import HarpMessage, HarpTxMessage
+from payloadtype import HarpTypes
+from message import HarpMessage, HarpTxMessage
 
 
 class HarpEvent:

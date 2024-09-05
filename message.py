@@ -4,7 +4,7 @@ from struct import pack_into, unpack_from
 from binascii import hexlify
 from micropython import const
 
-from microharp.types import HarpTypes
+from payloadtype import HarpTypes
 
 
 class HarpMessage:
