@@ -4,20 +4,20 @@ import uasyncio
 from collections import deque
 from micropython import const
 
-from microharp.types import HarpTypes
-from microharp.message import HarpMessage, HarpRxMessage, HarpTxMessage
-from microharp.register import (
+from payloadtype import HarpTypes
+from message import HarpMessage, HarpRxMessage, HarpTxMessage
+from register import (
     ReadOnlyReg,
     ReadWriteReg,
     TimestampSecondReg,
     TimestampMicroReg,
     OperationalCtrlReg,
 )
-from microharp.event import PeriodicEvent
-from microharp.clock import HarpClock
+from event import PeriodicEvent
+from clock import HarpClock
 import sys
 import uselect
-
+from machine import Pin, UART
 
 class HarpDevice:
     """Harp device implementing the common registers and functionality.
@@ -41,10 +41,12 @@ class HarpDevice:
     R_RESET_DEV = const(11)
     R_DEVICE_NAME = const(12)
     R_SERIAL_NUMBER = const(13)
+    CLK_BUAD = const(100_000)
+    CLK_LEN = const(6)
 
     ledIntervals = (2.0, 1.0, 0.05, 0.5)
 
-    def __init__(self, led, rxqlen=16, txqlen=16, monitor=None):
+    def __init__(self, led, clocksync_pin, rxqlen=16, txqlen=16, monitor=None):
         """Constructor.
 
         Connects the logical device to its physical interfaces and creates the register map.
@@ -62,6 +64,8 @@ class HarpDevice:
         self.rxMessages = deque((), rxqlen)
         self.txMessages = deque((), txqlen)
 
+        self.clockSync = UART(0, baudrate=self.CLK_BUAD, rx=Pin(clocksync_pin), rxbuf=6)
+
         self.registers = {
             HarpDevice.R_WHO_AM_I: ReadOnlyReg(HarpTypes.U16, (0,)),
             HarpDevice.R_HW_VERSION_H: ReadOnlyReg(HarpTypes.U8, (1,)),
@@ -71,9 +75,7 @@ class HarpDevice:
             HarpDevice.R_TIMESTAMP_SECOND: TimestampSecondReg(self.sync),
             HarpDevice.R_TIMESTAMP_MICRO: TimestampMicroReg(self.sync),
             HarpDevice.R_OPERATION_CTRL: OperationalCtrlReg(self._ctrl_hook),
-            HarpDevice.R_DEVICE_NAME: ReadWriteReg(
-                HarpTypes.U8, tuple(b"Microharp Device")
-            ),
+            HarpDevice.R_DEVICE_NAME: ReadWriteReg(HarpTypes.U8, tuple(b"Microharp Device")),
             HarpDevice.R_SERIAL_NUMBER: ReadWriteReg(HarpTypes.U16),
         }
 
@@ -84,6 +86,7 @@ class HarpDevice:
             self.txMessages,
             1000,
         )
+        self.events = [self.aliveEvent]
 
         self.tasks = [self._stream_task(), self._blink_task()]
 
@@ -92,18 +95,18 @@ class HarpDevice:
 
         Control register write hook, updates device state.
         """
-        if not self.registers[HarpDevice.R_OPERATION_CTRL].OPLEDEN:
-            self.led.off()
 
-        if (
-            self.registers[HarpDevice.R_OPERATION_CTRL].OP_MODE
-            != OperationalCtrlReg.STANDBY_MODE
-        ):
-            self.aliveEvent.enabled = self.registers[
-                HarpDevice.R_OPERATION_CTRL
-            ].ALIVE_EN
-        else:
-            self.aliveEvent.enabled = False
+        op_ctrl = self.registers[HarpDevice.R_OPERATION_CTRL]
+
+        self.led.value(op_ctrl.OPLEDEN)
+
+        event_en = op_ctrl.OP_MODE != OperationalCtrlReg.STANDBY_MODE
+
+        for event in self.events:
+            if event == self.aliveEvent:
+                event.enabled = op_ctrl.ALIVE_EN and event_en
+            else:
+                event.enabled = event_en
 
     async def _read_co(self, buf, nbytes=1):
         """Private member co-routine.
@@ -146,9 +149,7 @@ class HarpDevice:
             if self.registers[HarpDevice.R_OPERATION_CTRL].VISUALEN:
                 if self.registers[HarpDevice.R_OPERATION_CTRL].OPLEDEN:
                     self.led.toggle()
-                interval = HarpDevice.ledIntervals[
-                    self.registers[HarpDevice.R_OPERATION_CTRL].OP_MODE
-                ]
+                interval = HarpDevice.ledIntervals[self.registers[HarpDevice.R_OPERATION_CTRL].OP_MODE]
             else:
                 self.led.on()
             await uasyncio.sleep(interval)
@@ -172,14 +173,10 @@ class HarpDevice:
                         self.monitor.write("RX msg: " + rxMessage.to_string() + "\n")
                     # Perform write operation.
                     if rxMessage.messageType == HarpMessage.WRITE:
-                        self.registers[rxMessage.address].write(
-                            rxMessage.payloadType, rxMessage.payload
-                        )
-
+                        self.registers[rxMessage.address].write(rxMessage.payloadType, rxMessage.payload)
                     # Prepare response.
                     length = (
-                        len(self.registers[rxMessage.address])
-                        * HarpTypes.size(rxMessage.payloadType)
+                        len(self.registers[rxMessage.address]) * HarpTypes.size(rxMessage.payloadType)
                         + HarpMessage.offset(HarpTypes.HAS_TIMESTAMP)
                         - 1
                     )
@@ -192,15 +189,11 @@ class HarpDevice:
                     )
 
                     # Perform read operation.
-                    txMessage.payload = self.registers[rxMessage.address].read(
-                        rxMessage.payloadType
-                    )
+                    txMessage.payload = self.registers[rxMessage.address].read(rxMessage.payloadType)
 
                 except (TypeError, IndexError, KeyError):
                     # Prepare error response.
-                    length = rxMessage.length + HarpMessage.resize(
-                        rxMessage.payloadType
-                    )
+                    length = rxMessage.length + HarpMessage.resize(rxMessage.payloadType)
                     txMessage = HarpTxMessage(
                         rxMessage.messageType | HarpMessage.ERROR,
                         length,
