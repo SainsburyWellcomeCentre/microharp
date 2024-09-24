@@ -18,6 +18,8 @@ from .clock import HarpClock
 import sys
 import uselect
 from machine import Pin, UART
+from machine import Timer
+
 
 class HarpDevice:
     """Harp device implementing the common registers and functionality.
@@ -46,7 +48,7 @@ class HarpDevice:
 
     ledIntervals = (2.0, 1.0, 0.05, 0.5)
 
-    def __init__(self, led, clocksync_pin=None, rxqlen=16, txqlen=16, monitor=None):
+    def __init__(self, led, clocksync: UART, rxqlen=16, txqlen=16, monitor=None):
         """Constructor.
 
         Connects the logical device to its physical interfaces and creates the register map.
@@ -54,17 +56,17 @@ class HarpDevice:
         which implement the required device specific functionality.
         """
 
-        self.sync = HarpClock()
+        self.clock = HarpClock()
         self.led = led
         self.monitor = monitor
+        self.blink_flag = True
 
         self.stream = uselect.poll()
         self.stream.register(sys.stdin, uselect.POLLIN)
 
         self.rxMessages = deque((), rxqlen)
         self.txMessages = deque((), txqlen)
-
-        # self.clockSync = UART(0, baudrate=self.CLK_BUAD, rx=Pin(clocksync_pin), rxbuf=6)
+        self.clockSync = clocksync
 
         self.registers = {
             HarpDevice.R_WHO_AM_I: ReadOnlyReg(HarpTypes.U16, (0,)),
@@ -72,8 +74,8 @@ class HarpDevice:
             HarpDevice.R_HW_VERSION_L: ReadOnlyReg(HarpTypes.U8),
             HarpDevice.R_FW_VERSION_H: ReadOnlyReg(HarpTypes.U8),
             HarpDevice.R_FW_VERSION_L: ReadOnlyReg(HarpTypes.U8, (1,)),
-            HarpDevice.R_TIMESTAMP_SECOND: TimestampSecondReg(self.sync),
-            HarpDevice.R_TIMESTAMP_MICRO: TimestampMicroReg(self.sync),
+            HarpDevice.R_TIMESTAMP_SECOND: TimestampSecondReg(self.clock),
+            HarpDevice.R_TIMESTAMP_MICRO: TimestampMicroReg(self.clock),
             HarpDevice.R_OPERATION_CTRL: OperationalCtrlReg(self._ctrl_hook),
             HarpDevice.R_DEVICE_NAME: ReadWriteReg(HarpTypes.U8, tuple(b"Microharp Device")),
             HarpDevice.R_SERIAL_NUMBER: ReadWriteReg(HarpTypes.U16),
@@ -82,13 +84,13 @@ class HarpDevice:
         self.aliveEvent = PeriodicEvent(
             HarpDevice.R_TIMESTAMP_SECOND,
             self.registers[HarpDevice.R_TIMESTAMP_SECOND],
-            self.sync,
+            self.clock,
             self.txMessages,
             1000,
         )
         self.events = [self.aliveEvent]
 
-        self.tasks = [self._stream_task(), self._blink_task()]
+        self.tasks = [self._stream_task(), self._blink_task(), self._clock_task()]
 
     def _ctrl_hook(self):
         """Private member function.
@@ -119,6 +121,26 @@ class HarpDevice:
                 nbytes -= 1
             await uasyncio.sleep(0)
 
+    async def _clock_task(self):
+        """Private member co-routine.
+
+        Reads nbytes from stream into buf in the largest blocks available, whilst playing nicely.
+        """
+        buf = bytearray(6)
+        while True:
+            if self.clockSync.any() >= 6:
+                self.blink_flag = False
+                self.aliveEvent.timer.deinit()
+
+                self.clockSync.readinto(buf)
+                self.clock.write(buf)
+
+                self.aliveEvent._callback(0)
+                self.aliveEvent.timer.init(mode=Timer.PERIODIC, period=1000, callback=self.aliveEvent._callback)
+                self.blink_flag = True
+
+            await uasyncio.sleep(0)
+
     async def _stream_task(self):
         """Private member co-operative task.
 
@@ -146,13 +168,15 @@ class HarpDevice:
         """
         # print('HarpDevice._blink_task()')
         while True:
-            if self.registers[HarpDevice.R_OPERATION_CTRL].VISUALEN:
-                if self.registers[HarpDevice.R_OPERATION_CTRL].OPLEDEN:
-                    self.led.toggle()
-                interval = HarpDevice.ledIntervals[self.registers[HarpDevice.R_OPERATION_CTRL].OP_MODE]
-            else:
-                self.led.on()
-            await uasyncio.sleep(interval)
+            while self.blink_flag:
+                if self.registers[HarpDevice.R_OPERATION_CTRL].VISUALEN:
+                    if self.registers[HarpDevice.R_OPERATION_CTRL].OPLEDEN:
+                        self.led.toggle()
+                    interval = HarpDevice.ledIntervals[self.registers[HarpDevice.R_OPERATION_CTRL].OP_MODE]
+                else:
+                    self.led.on()
+                await uasyncio.sleep(interval)
+            await uasyncio.sleep(0)
 
     async def main(self):
         """Device main function, must be called using uasyncio.run().
@@ -185,7 +209,7 @@ class HarpDevice:
                         length,
                         rxMessage.address,
                         rxMessage.payloadType,
-                        self.sync.read(),
+                        self.clock.read(),
                     )
 
                     # Perform read operation.
@@ -199,7 +223,7 @@ class HarpDevice:
                         length,
                         rxMessage.address,
                         rxMessage.payloadType,
-                        self.sync.read(),
+                        self.clock.read(),
                     )
                     if rxMessage.messageType == HarpMessage.WRITE:
                         txMessage.payload = rxMessage.payload
